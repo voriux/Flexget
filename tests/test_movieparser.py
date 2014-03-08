@@ -22,7 +22,7 @@ class TestMovieParser:
         movie = self.parse('The.Pianist.2002.HDDVD.1080p.DTS.x264-FlexGet')
         assert movie.name == 'The Pianist', 'failed to parse %s' % movie.data
         assert movie.year == 2002, 'failed to parse year from %s' % movie.data
-        assert movie.quality.name == '1080p h264 dts', 'failed to parse quality from %s' % movie.data
+        assert movie.quality.name == '1080p dvdrip h264 dts', 'failed to parse quality from %s' % movie.data
 
         movie = self.parse("Howl's_Moving_Castle_(2004)_[720p,HDTV,x264,DTS]-FlexGet")
         assert movie.name == "Howl's Moving Castle", 'failed to parse %s' % movie.data
