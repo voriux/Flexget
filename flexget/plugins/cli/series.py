@@ -225,51 +225,62 @@ def display_details(name):
     session.close()
 
 
-import npyscreen
+def interactive_series():
+    try:
+        import curses
+    except ImportError:
+        # TODO: Tell windows users how to get curses
+        console('curses required')
+        return
 
+    try:
+        import npyscreen
+        # TODO: Check version
+    except ImportError:
+        console('npyscreen required. `pip install npyscreen` to install')
+        return
 
-class SeriesTree(npyscreen.MLTree):
-    def __init__(self, *args, **kwargs):
-        super(SeriesTree, self).__init__(*args, **kwargs)
-        self.add_handlers({
-            '^D': self.on_delete_record
-        })
-
-    def on_delete_record(self, *args, **kwargs):
+    class LazyNPSTreeData(npyscreen.NPSTreeData):
+        # TODO: Only load episodes/releases when expanding series
         pass
 
+    class SeriesTree(npyscreen.MLTree):
+        def __init__(self, *args, **kwargs):
+            super(SeriesTree, self).__init__(*args, **kwargs)
+            self.add_handlers({
+                '^D': self.on_delete_record
+            })
 
-class SeriesTreeDisplay(npyscreen.FormMutt):
-    MAIN_WIDGET_CLASS = SeriesTree
-    def beforeEditing(self):
-        self.wMain.values = self.parentApp.series_tree_data
+        def on_delete_record(self, *args, **kwargs):
+            pass
 
-    #def update_list(self):
-    #    self.wMain.values = self.parentApp.myDatabase.list_all_records()
-    #    self.wMain.display()
+        def convertToTree(self, values):
+            """Makes a tree out of a list of Series instances."""
+            tree_root = npyscreen.NPSTreeData()
+            for series in values:
+                tree_series = tree_root.newChild(content=series, expanded=False)
+                for episode in series.episodes:
+                    tree_ep = tree_series.newChild(content=episode, expanded=False)
+                    for release in episode.releases:
+                        tree_ep.newChild(content=release)
+            return tree_root
 
+    class SeriesTreeDisplay(npyscreen.Form):
+        def create(self):
+            self.st = self.add(SeriesTree)
+            self.st.values = self.parentApp.series_to_display
 
-def create_tree_data():
-    session = Session()
-    tree_root = npyscreen.NPSTreeData()
-    for series in session.query(Series).all():
-        tree_series = tree_root.newChild(content=series, expanded=False)
-        for episode in series.episodes:
-            tree_ep = tree_series.newChild(content=episode, expanded=False)
-            for release in episode.releases:
-                tree_ep.newChild(content=release)
-    return tree_root
+        def afterEditing(self):
+            self.parentApp.setNextForm(None)
 
+    class SeriesViewApplication(npyscreen.NPSAppManaged):
+        def onStart(self):
+            session = Session()
+            self.series_to_display = session.query(Series)
+            self.addForm("MAIN", SeriesTreeDisplay)
 
-class SeriesViewApplication(npyscreen.NPSAppManaged):
-    def onStart(self):
-        self.series_tree_data = create_tree_data()
-        self.addForm("MAIN", SeriesTreeDisplay)
-        #self.addForm("EDITRECORDFM", EditRecord)
-
-def interactive_series():
-    myApp = SeriesViewApplication()
-    myApp.run()
+    my_app = SeriesViewApplication()
+    my_app.run()
 
 
 
