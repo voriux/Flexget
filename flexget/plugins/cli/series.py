@@ -26,6 +26,8 @@ def do_cli(manager, options):
         forget(manager, options)
     elif options.series_action == 'begin':
         begin(manager, options)
+    elif options.series_action == 'interactive':
+        interactive_series()
 
 
 def display_summary(options):
@@ -223,6 +225,54 @@ def display_details(name):
     session.close()
 
 
+import npyscreen
+
+
+class SeriesTree(npyscreen.MLTree):
+    def __init__(self, *args, **kwargs):
+        super(SeriesTree, self).__init__(*args, **kwargs)
+        self.add_handlers({
+            '^D': self.on_delete_record
+        })
+
+    def on_delete_record(self, *args, **kwargs):
+        pass
+
+
+class SeriesTreeDisplay(npyscreen.FormMutt):
+    MAIN_WIDGET_CLASS = SeriesTree
+    def beforeEditing(self):
+        self.wMain.values = self.parentApp.series_tree_data
+
+    #def update_list(self):
+    #    self.wMain.values = self.parentApp.myDatabase.list_all_records()
+    #    self.wMain.display()
+
+
+def create_tree_data():
+    session = Session()
+    tree_root = npyscreen.NPSTreeData()
+    for series in session.query(Series).all():
+        tree_series = tree_root.newChild(content=series, expanded=False)
+        for episode in series.episodes:
+            tree_ep = tree_series.newChild(content=episode, expanded=False)
+            for release in episode.releases:
+                tree_ep.newChild(content=release)
+    return tree_root
+
+
+class SeriesViewApplication(npyscreen.NPSAppManaged):
+    def onStart(self):
+        self.series_tree_data = create_tree_data()
+        self.addForm("MAIN", SeriesTreeDisplay)
+        #self.addForm("EDITRECORDFM", EditRecord)
+
+def interactive_series():
+    myApp = SeriesViewApplication()
+    myApp.run()
+
+
+
 @event('options.register')
 def register_parser_arguments():
     # Register the command
@@ -256,6 +306,8 @@ def register_parser_arguments():
     forget_parser = subparsers.add_parser('forget', parents=[series_parser],
                                           help='removes episodes or whole series from the series database')
     forget_parser.add_argument('episode_id', nargs='?', default=None, help='episode ID to forget (optional)')
+
+    subparsers.add_parser('interactive')
 
 
 
