@@ -62,10 +62,7 @@ class SearchLM(object):
         download_auth = CookieAuth(login_sess.cookies)
         # Default to searching by title (0=title 3=imdb_id)
         search_by = 0
-        if 'imdb_id' in entry:
-            searches = [entry['imdb_id']]
-            search_by = 3
-        elif 'movie_name' in entry:
+        if 'movie_name' in entry:
             search = entry['movie_name']
             if 'movie_year' in entry:
                 search += ' %s' % entry['movie_year']
