@@ -3,6 +3,7 @@ import time
 import logging
 import difflib
 import random
+import urllib
 from datetime import datetime, timedelta
 from urllib2 import URLError
 
@@ -11,9 +12,8 @@ from sqlalchemy.schema import ForeignKey, Index
 from sqlalchemy.orm import relation
 
 from flexget import db_schema
-from flexget.plugin import internet, PluginError
+from flexget.plugin import internet, PluginError, get_plugin_by_name
 from flexget.utils import requests
-from flexget.utils.titles import MovieParser
 from flexget.utils.database import text_date_synonym, with_session
 from flexget.utils.sqlalchemy_utils import table_schema, table_add_column
 
@@ -259,8 +259,7 @@ def lookup_movie(title=None, year=None, rottentomatoes_id=None, smart_match=None
 
     if smart_match:
         # If smart_match was specified, and we don't have more specific criteria, parse it into a title and year
-        title_parser = MovieParser()
-        title_parser.parse(smart_match)
+        title_parser = get_plugin_by_name('parsing').instance.parse_movie(smart_match)
         title = title_parser.name
         year = title_parser.year
         if title == '' and not (rottentomatoes_id or title):
@@ -391,7 +390,6 @@ def lookup_movie(title=None, year=None, rottentomatoes_id=None, smart_match=None
                             session.add(movie)
                             session.commit()
 
-
                         if title.lower() != movie.title.lower():
                             log.debug('Saving search result for \'%s\'' % search_string)
                             session.add(RottenTomatoesSearchResult(search=search_string, movie=movie))
@@ -426,9 +424,10 @@ def _set_movie_details(movie, session, movie_data=None, api_key=None):
     if movie_data:
         if movie.id:
             log.debug("Updating movie info (actually just deleting the old info and adding the new)")
-            session.delete(movie)
-            session.flush()
-            movie = RottenTomatoesMovie()
+            del movie.release_dates[:]
+            del movie.posters[:]
+            del movie.alternate_ids[:]
+            del movie.links[:]
         movie.update_from_dict(movie_data)
         movie.update_from_dict(movie_data.get('ratings'))
         genres = movie_data.get('genres')
@@ -511,7 +510,7 @@ def lists(list_type, list_name, limit=20, page_limit=20, page=None, api_key=None
 
 def movies_search(q, page_limit=None, page=None, api_key=None):
     if isinstance(q, basestring):
-        q = q.replace(' ', '+').encode('utf-8')
+        q = urllib.quote_plus(q.encode('latin-1', errors='ignore'))
 
     if not api_key:
         api_key = API_KEY
@@ -525,6 +524,7 @@ def movies_search(q, page_limit=None, page=None, api_key=None):
     results = get_json(url)
     if isinstance(results, dict) and results.get('total') and len(results.get('movies')):
         return results
+
 
 def get_json(url):
     try:

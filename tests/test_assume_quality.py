@@ -1,11 +1,11 @@
 from __future__ import unicode_literals, division, absolute_import
-from tests import FlexGetBase
+from tests import FlexGetBase, build_parser_function
 from nose.tools import assert_raises
 from flexget.task import TaskAbort
 import flexget.utils.qualities as qualities
 
-class TestAssumeQuality(FlexGetBase):
 
+class BaseAssumeQuality(FlexGetBase):
     __yaml__ = """
         templates:
           global:
@@ -57,11 +57,29 @@ class TestAssumeQuality(FlexGetBase):
           test_with_series:
             template: no_global
             mock:
-            - title: my show S01E01
+            - title: my show S01E01 hdtv
             assume_quality: 720p
             series:
             - my show:
-                quality: 720p
+                quality: 720p hdtv
+
+          test_with_series_target:
+            template: no_global
+            mock:
+            - title: my show S01E01 hdtv
+            assume_quality: 720p
+            series:
+            - my show:
+                target: 720p hdtv
+
+          test_with_series_qualities:
+            template: no_global
+            mock:
+            - title: my show S01E01 hdtv
+            assume_quality: 720p
+            series:
+            - my show:
+                qualities: [720p hdtv]
     """
 
     def test_matching(self):
@@ -110,3 +128,23 @@ class TestAssumeQuality(FlexGetBase):
     def test_with_series(self):
         self.execute_task('test_with_series')
         assert self.task.accepted, 'series plugin should have used assumed quality'
+
+    def test_with_series_target(self):
+        self.execute_task('test_with_series_target')
+        assert self.task.accepted, 'series plugin should have used assumed quality'
+
+    def test_with_series_qualities(self):
+        self.execute_task('test_with_series_qualities')
+        assert self.task.accepted, 'series plugin should have used assumed quality'
+
+
+class TestGuessitAssumeQuality(BaseAssumeQuality):
+    def __init__(self):
+        super(TestGuessitAssumeQuality, self).__init__()
+        self.add_tasks_function(build_parser_function('guessit'))
+
+
+class TestInternalAssumeQuality(BaseAssumeQuality):
+    def __init__(self):
+        super(TestInternalAssumeQuality, self).__init__()
+        self.add_tasks_function(build_parser_function('internal'))

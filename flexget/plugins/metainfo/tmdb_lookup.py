@@ -3,6 +3,7 @@ import logging
 
 from flexget import plugin
 from flexget.event import event
+from flexget.manager import Session
 from flexget.utils import imdb
 from flexget.utils.log import log_once
 
@@ -45,24 +46,21 @@ class PluginTmdbLookup(object):
         'movie_name': 'name',
         'movie_year': 'year'}
 
-    def validator(self):
-        from flexget import validator
-        return validator.factory('boolean')
+    schema = {'type': 'boolean'}
 
-    def lazy_loader(self, entry, field):
+    def lazy_loader(self, entry):
         """Does the lookup for this entry and populates the entry fields."""
         imdb_id = (entry.get('imdb_id', eval_lazy=False) or
                    imdb.extract_id(entry.get('imdb_url', eval_lazy=False)))
         try:
-            movie = lookup(smart_match=entry['title'],
-                           tmdb_id=entry.get('tmdb_id', eval_lazy=False),
-                           imdb_id=imdb_id)
-            entry.update_using_map(self.field_map, movie)
+            with Session(expire_on_commit=False) as session:
+                movie = lookup(smart_match=entry['title'],
+                               tmdb_id=entry.get('tmdb_id', eval_lazy=False),
+                               imdb_id=imdb_id,
+                               session=session)
+                entry.update_using_map(self.field_map, movie)
         except LookupError:
             log_once('TMDB lookup failed for %s' % entry['title'], log, logging.WARN)
-            # Set all of our fields to None if the lookup failed
-            entry.unregister_lazy_fields(self.field_map, self.lazy_loader)
-        return entry[field]
 
     def lookup(self, entry):
         """
@@ -71,7 +69,7 @@ class PluginTmdbLookup(object):
 
         :param entry: Entry instance
         """
-        entry.register_lazy_fields(self.field_map, self.lazy_loader)
+        entry.register_lazy_func(self.lazy_loader, self.field_map)
 
     def on_task_metainfo(self, task, config):
         if not config:

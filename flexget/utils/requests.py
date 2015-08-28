@@ -4,15 +4,20 @@ import time
 import logging
 from datetime import timedelta, datetime
 from urlparse import urlparse
+
 import requests
 # Allow some request objects to be imported from here instead of requests
 from requests import RequestException, HTTPError
+
+from flexget import __version__ as version
 from flexget.utils.tools import parse_timedelta, TimedDict
 
 log = logging.getLogger('requests')
 
 # Don't emit info level urllib3 log messages or below
 logging.getLogger('requests.packages.urllib3').setLevel(logging.WARNING)
+# same as above, but for systems where urllib3 isn't part of the requests pacakge (i.e., Ubuntu)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
 
 # Time to wait before trying an unresponsive site again
 WAIT_TIME = timedelta(seconds=60)
@@ -43,6 +48,21 @@ def set_unresponsive(url):
         # If somehow this is called again before previous timer clears, don't refresh
         return
     unresponsive_hosts[host] = True
+
+
+def wait_for_domain(url, delay_dict):
+    for domain, domain_dict in delay_dict.iteritems():
+        if domain in url:
+            next_req = domain_dict.get('next_req')
+            if next_req and datetime.now() < next_req:
+                wait_time = next_req - datetime.now()
+                seconds = wait_time.seconds + (wait_time.microseconds / 1000000.0)
+                log.debug('Waiting %.2f seconds until next request to %s' % (seconds, domain))
+                # Sleep until it is time for the next request
+                time.sleep(seconds)
+            # Record the next allowable request time for this domain
+            domain_dict['next_req'] = datetime.now() + domain_dict['delay']
+            break
 
 
 def _wrap_urlopen(url, timeout=None):
@@ -84,6 +104,7 @@ class Session(requests.Session):
         self.adapters['http://'].max_retries = max_retries
         # Stores min intervals between requests for certain sites
         self.domain_delay = {}
+        self.headers.update({'User-Agent': 'FlexGet/%s (www.flexget.com)' % version})
 
     def add_cookiejar(self, cookiejar):
         """
@@ -107,25 +128,16 @@ class Session(requests.Session):
         """
         Does a request, but raises Timeout immediately if site is known to timeout, and records sites that timeout.
         Also raises errors getting the content by default.
+
+        :param bool raise_status: If True, non-success status code responses will be raised as errors (True by default)
         """
 
         # Raise Timeout right away if site is known to timeout
         if is_unresponsive(url):
             raise requests.Timeout('Requests to this site have timed out recently. Waiting before trying again.')
 
-        # Check if we need to add a delay before request to this site
-        for domain, domain_dict in self.domain_delay.iteritems():
-            if domain in url:
-                next_req = domain_dict.get('next_req')
-                if next_req and datetime.now() < next_req:
-                    wait_time = next_req - datetime.now()
-                    seconds = wait_time.seconds + (wait_time.microseconds / 1000000.0)
-                    log.debug('Waiting %.2f seconds until next request to %s' % (seconds, domain))
-                    # Sleep until it is time for the next request
-                    time.sleep(seconds)
-                # Record the next allowable request time for this domain
-                domain_dict['next_req'] = datetime.now() + domain_dict['delay']
-                break
+        # Delay, if needed, before another request to this site
+        wait_for_domain(url, self.domain_delay)
 
         kwargs.setdefault('timeout', self.timeout)
         raise_status = kwargs.pop('raise_status', True)

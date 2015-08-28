@@ -7,6 +7,8 @@ import posixpath
 import httplib
 from datetime import datetime
 
+import dateutil.parser
+
 import feedparser
 from requests import RequestException
 
@@ -19,6 +21,12 @@ from flexget.utils.tools import decode_html
 from flexget.utils.pathscrub import pathscrub
 
 log = logging.getLogger('rss')
+feedparser.registerDateHandler(lambda date_string: dateutil.parser.parse(date_string).timetuple())
+
+
+def fp_field_name(name):
+    """Translates literal field name to the sanitized one feedparser will use."""
+    return name.replace(':', '_').lower()
 
 
 class InputRSS(object):
@@ -117,7 +125,13 @@ class InputRSS(object):
             config = {'url': config}
         # set the default link value to 'auto'
         config.setdefault('link', 'auto')
-        # Replace : with _ and lower case other fields so they can be found in rss
+        # Convert any field names from the config to format feedparser will use for 'link', 'title' and 'other_fields'
+        if config['link'] != 'auto':
+            if not isinstance(config['link'], list):
+                config['link'] = [config['link']]
+            config['link'] = map(fp_field_name, config['link'])
+        config.setdefault('title', 'title')
+        config['title'] = fp_field_name(config['title'])
         if config.get('other_fields'):
             other_fields = []
             for item in config['other_fields']:
@@ -125,7 +139,7 @@ class InputRSS(object):
                     key, val = item, item
                 else:
                     key, val = item.items()[0]
-                other_fields.append({key.replace(':', '_').lower(): val.lower()})
+                other_fields.append({fp_field_name(key): val.lower()})
             config['other_fields'] = other_fields
         # set default value for group_links as deactivated
         config.setdefault('group_links', False)
@@ -290,8 +304,9 @@ class InputRSS(object):
                     # html pages (login pages) are received
                     self.process_invalid_content(task, content, config['url'])
                     if task.options.debug:
-                        log.exception(ex)
-                    raise plugin.PluginError('Received invalid RSS content from task %s (%s)' % (task.name, config['url']))
+                        log.error('bozo error parsing rss: %s' % ex)
+                    raise plugin.PluginError('Received invalid RSS content from task %s (%s)' % (task.name,
+                                                                                                 config['url']))
                 elif isinstance(ex, httplib.BadStatusLine) or isinstance(ex, IOError):
                     raise ex  # let the @internet decorator handle
                 else:
@@ -313,6 +328,15 @@ class InputRSS(object):
 
         # new entries to be created
         entries = []
+
+        # Dict with fields to grab mapping from rss field name to FlexGet field name
+        fields = {'guid': 'guid',
+                  'author': 'author',
+                  'description': 'description',
+                  'infohash': 'torrent_info_hash'}
+        # extend the dict of fields to grab with other_fields list in config
+        for field_map in config.get('other_fields', []):
+            fields.update(field_map)
 
         # field name for url can be configured by setting link.
         # default value is auto but for example guid is used in some feeds
@@ -340,15 +364,6 @@ class InputRSS(object):
             # remove annoying zero width spaces
             entry.title = entry.title.replace(u'\u200B', u'')
 
-            # Dict with fields to grab mapping from rss field name to FlexGet field name
-            fields = {'guid': 'guid',
-                      'author': 'author',
-                      'description': 'description',
-                      'infohash': 'torrent_info_hash'}
-            # extend the dict of fields to grab with other_fields list in config
-            for field_map in config.get('other_fields', []):
-                fields.update(field_map)
-
             # helper
             # TODO: confusing? refactor into class member ...
 
@@ -361,7 +376,7 @@ class InputRSS(object):
                             # Error if this field is not a string
                             log.error('Cannot grab non text field `%s` from rss.', rss_field)
                             # Remove field from list of fields to avoid repeated error
-                            config['other_fields'].remove(rss_field)
+                            del fields[rss_field]
                             continue
                         if not getattr(entry, rss_field):
                             log.debug('Not grabbing blank field %s from rss for %s.', rss_field, ea['title'])
@@ -388,7 +403,7 @@ class InputRSS(object):
                 # There is more than 1 enclosure, create an Entry for each of them
                 log.debug('adding %i entries from enclosures', len(enclosures))
                 for enclosure in enclosures:
-                    if not 'href' in enclosure:
+                    if 'href' not in enclosure:
                         log.debug('RSS-entry `%s` enclosure does not have URL', entry.title)
                         continue
                     # There is a valid url for this enclosure, create an Entry for it
@@ -439,7 +454,11 @@ class InputRSS(object):
         # Save last spot in rss
         if rss.entries:
             log.debug('Saving location in rss feed.')
-            task.simple_persistence['%s_last_entry' % url_hash] = rss.entries[0].title + rss.entries[0].get('guid', '')
+            try:
+                task.simple_persistence['%s_last_entry' % url_hash] = (rss.entries[0].title +
+                                                                       rss.entries[0].get('guid', ''))
+            except AttributeError:
+                log.debug('rss feed location saving skipped: no title information in first entry')
 
         if ignored:
             if not config.get('silent'):

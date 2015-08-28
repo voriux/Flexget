@@ -26,7 +26,7 @@ except:
 def upgrade(ver, session):
     if ver is None:
         columns = table_columns('make_rss', session)
-        if not 'rsslink' in columns:
+        if 'rsslink' not in columns:
             log.info('Adding rsslink column to table make_rss.')
             table_add_column('make_rss', 'rsslink', String, session)
         ver = 0
@@ -43,7 +43,7 @@ class RSSEntry(Base):
     link = Column(String)
     rsslink = Column(String)
     file = Column(Unicode)
-    published = Column(DateTime, default=datetime.datetime.utcnow())
+    published = Column(DateTime, default=datetime.datetime.utcnow)
 
 
 class OutputRSS(object):
@@ -176,7 +176,11 @@ class OutputRSS(object):
         # save entries into db for RSS generation
         for entry in task.accepted:
             rss = RSSEntry()
-            rss.title = entry.render(config['title'])
+            try:
+                rss.title = entry.render(config['title'])
+            except RenderError as e:
+                log.error('Error rendering jinja title for `%s` falling back to entry title: %s' % (entry['title'], e))
+                rss.title = entry['title']
             for field in config['link']:
                 if field in entry:
                     rss.link = entry[field]
@@ -223,7 +227,7 @@ class OutputRSS(object):
                 hasher.update(db_item.description.encode('utf8'))
                 hasher.update(db_item.link.encode('utf8'))
                 guid = base64.urlsafe_b64encode(hasher.digest())
-                guid = PyRSS2Gen.Guid(guid, isPermaLink = False)
+                guid = PyRSS2Gen.Guid(guid, isPermaLink=False)
 
                 gen = {'title': db_item.title,
                        'description': db_item.description,

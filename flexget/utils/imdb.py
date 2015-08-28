@@ -8,14 +8,14 @@ from bs4.element import Tag
 from flexget.utils.soup import get_soup
 from flexget.utils.requests import Session
 from flexget.utils.tools import str_to_int
-
+from flexget.plugin import get_plugin_by_name
 
 log = logging.getLogger('utils.imdb')
 # IMDb delivers a version of the page which is unparsable to unknown (and some known) user agents, such as requests'
 # Spoof the old urllib user agent to keep results consistent
 requests = Session()
 requests.headers.update({'User-Agent': 'Python-urllib/2.6'})
-#requests.headers.update({'User-Agent': random.choice(USERAGENTS)})
+# requests.headers.update({'User-Agent': random.choice(USERAGENTS)})
 
 # this makes most of the titles to be returned in english translation, but not all of them
 requests.headers.update({'Accept-Language': 'en-US,en;q=0.8'})
@@ -53,7 +53,7 @@ class ImdbSearch(object):
         self.aka_weight = 0.95
         # prioritize first
         self.first_weight = 1.1
-        self.min_match = 0.5
+        self.min_match = 0.7
         self.min_diff = 0.01
         self.debug = False
 
@@ -66,10 +66,7 @@ class ImdbSearch(object):
 
     def smart_match(self, raw_name):
         """Accepts messy name, cleans it and uses information available to make smartest and best match"""
-        from flexget.utils.titles.movie import MovieParser
-        parser = MovieParser()
-        parser.data = raw_name
-        parser.parse()
+        parser = get_plugin_by_name('parsing').instance.parse_movie(raw_name)
         name = parser.name
         year = parser.year
         if name == '':
@@ -90,7 +87,10 @@ class ImdbSearch(object):
         for movie in movies[:]:
             if year and movie.get('year'):
                 if movie['year'] != str(year):
-                    log.debug('best_match removing %s - %s (wrong year: %s)' % (movie['name'], movie['url'], str(movie['year'])))
+                    log.debug('best_match removing %s - %s (wrong year: %s)' % (
+                        movie['name'],
+                        movie['url'],
+                        str(movie['year'])))
                     movies.remove(movie)
                     continue
             if movie['match'] < self.min_match:
@@ -324,7 +324,7 @@ class ImdbParser(object):
             m = re.search('(?x) \( [^()]* \\b few \\b', link.next_sibling)
             if not m:
                 lang = link.text.lower()
-                if not lang in self.languages:
+                if lang not in self.languages:
                     self.languages.append(lang.strip())
 
         # get year

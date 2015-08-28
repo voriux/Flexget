@@ -125,7 +125,7 @@ class InputHtml(object):
         log.verbose('Requesting: %s' % url)
         page = task.requests.get(url, auth=auth)
         log.verbose('Response: %s (%s)' % (page.status_code, page.reason))
-        soup = get_soup(page.text)
+        soup = get_soup(page.content)
 
         # dump received content into a file
         if dump_name:
@@ -172,15 +172,15 @@ class InputHtml(object):
                 continue
 
             url = link['href']
-            log_link = url
-            log_link = log_link.replace('\n', '')
-            log_link = log_link.replace('\r', '')
-
             # fix broken urls
             if url.startswith('//'):
                 url = 'http:' + url
             elif not url.startswith('http://') or not url.startswith('https://'):
                 url = urlparse.urljoin(page_url, url)
+
+            log_link = url
+            log_link = log_link.replace('\n', '')
+            log_link = log_link.replace('\r', '')
 
             # get only links matching regexp
             regexps = config.get('links_re', None)
@@ -261,6 +261,9 @@ class InputHtml(object):
             entry = Entry()
             entry['url'] = url
             entry['title'] = title
+
+            if 'username' in config and 'password' in config:
+                entry['download_auth'] = (config['username'], config['password'])
 
             queue.append(entry)
 

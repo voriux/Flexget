@@ -9,7 +9,9 @@ from flexget.event import event
 log = logging.getLogger('torrent_cache')
 
 MIRRORS = ['http://torrage.com/torrent/',
-           'https://torcache.net/torrent/']
+           'https://torcache.net/torrent/',
+           'http://zoink.it/torrent/',
+           'http://itorrents.org/torrent/']
 
 
 class TorrentCache(object):
